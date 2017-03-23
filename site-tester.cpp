@@ -39,9 +39,11 @@ typedef struct __fetch_args {
 
 fetch_args ourData;
 pthread_t * pArray = new pthread_t[NUM_FETCH];
+pthread_t * fArray = new pthread_t[NUM_FETCH];
 string line;
 
 void * threadFetch(void*);
+void * threadParse(void*);
 void timer_reset(int);
 
 int main(int argc, char* argv[]){
@@ -84,12 +86,16 @@ int main(int argc, char* argv[]){
 //	int val = setjmp(env);
 	//get site html content
 	fstream siteFile(SITE_FILE);
-	pthread_t * pArray = new pthread_t[NUM_FETCH];
 	for(int i=0; i<NUM_FETCH; i++){
-		cout<<"creating"<<endl;
-		pthread_create(&pArray[i], NULL, threadFetch, (void*) &ourData);
+		cout<<"creating fetch thread"<<endl;
+		pthread_create(&fArray[i], NULL, threadFetch, (void*) &ourData);
 	}
-		timer_reset(0);
+	for(int i=0; i<NUM_FETCH; i++){
+		cout<<"creating parse thread"<<endl;
+		pthread_create(&pArray[i], NULL, threadParse, (void*) &ourData);
+	}
+	timer_reset(0);
+	while(fKeepRunning);
 		//start threading
 /*		for(int i=0; i<NUM_FETCH; i++){
 			cout<<"joining"<<endl;
@@ -114,13 +120,27 @@ void timer_reset(int s){
 		cout<<"pushing to fetchQ"<<endl;
 		pthread_cond_broadcast(&fCond);
 	}
-	cin.ignore();
-	while(!ourData.parseQ.empty()){
-		 parseData(searchStrings, ourData.parseQ.front().data,"output.txt",ourData.parseQ.front().site);
-		 ourData.parseQ.pop();
-	}
-//	longjmp(env, 0);
 }
+
+void *threadParse(void *fData) {
+	fetch_args * pData = &ourData;
+	while(fKeepRunning) { // or while(gKeepRunning)
+		// lock Mutex
+		pthread_mutex_lock(&pMutex);
+		while (pData->parseQ.empty()) { 	// bars other threads from using
+			cout<<"waiting to parse"<<endl;
+			pthread_cond_wait(&pCond, &pMutex);
+		}
+		// pop the first item from queue
+		cout<<"parseing"<<endl;
+		parseData(searchStrings, pData->parseQ.front().data,"output.txt",pData->parseQ.front().site);
+		pData->parseQ.pop();
+		// unlock parse queue
+		pthread_mutex_unlock(&pMutex);
+	}
+	return NULL;
+}
+
 
 
 void *threadFetch(void *fData) {
@@ -129,7 +149,7 @@ void *threadFetch(void *fData) {
 		// lock Mutex
 		pthread_mutex_lock(&fMutex);
 		while (pData->fetchQ.empty()) { 	// bars other threads from using
-			cout<<"waiting"<<endl;
+			cout<<"waiting to fetch"<<endl;
 			pthread_cond_wait(&fCond, &fMutex);
 		}
 		// pop the first item from queue
