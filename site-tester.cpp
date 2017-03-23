@@ -23,6 +23,8 @@ string SITE_FILE = "Sites.txt";
 pthread_mutex_t fMutex, pMutex;
 pthread_cond_t pCond, fCond;
 jmp_buf env;
+int fKeepRunning = 1;
+vector<string> searchStrings;
 
 struct siteData{
 	string site;
@@ -35,6 +37,10 @@ typedef struct __fetch_args {
 	queue<siteData> parseQ;
 } fetch_args;
 
+fetch_args ourData;
+pthread_t * pArray = new pthread_t[NUM_FETCH];
+string line;
+
 void * threadFetch(void*);
 void timer_reset(int);
 
@@ -42,7 +48,6 @@ int main(int argc, char* argv[]){
 	signal(SIGALRM, timer_reset);
 	fetch_args ourData;
 
-	string line;
 	string delim = "=";
 	if (argc <2){
 		cout<<"Please give a config file"<<endl;
@@ -73,58 +78,58 @@ int main(int argc, char* argv[]){
 	}
 	//Get Search strings=======================
 	fstream searchFile(SEARCH_FILE);
-	vector<string> searchStrings;
 	while(getline(searchFile, line)){
 		searchStrings.push_back(line);
 	}
-	int val = setjmp(env);
-	alarm(PERIOD_FETCH);
+//	int val = setjmp(env);
 	//get site html content
 	fstream siteFile(SITE_FILE);
 	pthread_t * pArray = new pthread_t[NUM_FETCH];
-	while(siteFile>>line){
-		ourData.fetchQ.push(line);
-		pthread_cond_signal(&fCond);
+	for(int i=0; i<NUM_FETCH; i++){
+		cout<<"creating"<<endl;
+		pthread_create(&pArray[i], NULL, threadFetch, (void*) &ourData);
 	}
+		timer_reset(0);
 		//start threading
-		cout<<"have data"<<endl;
-		for(int i=0; i<NUM_FETCH; i++){
-			cout<<"creating"<<endl;
-			pthread_create(&pArray[i], NULL, threadFetch, (void*) &ourData);
-		}
-		for(int i=0; i<NUM_FETCH; i++){
+/*		for(int i=0; i<NUM_FETCH; i++){
 			cout<<"joining"<<endl;
 			if (pthread_join(pArray[i], NULL)) {
 				perror("Error joining thread");	// catch join error
 			} else {
 				cout << "joined" << endl;
 			}
-
-			// int rc = pthread_join(pArray[i], NULL);
-			// if(rc!=0){
-			// 	cout<<"it done fucked up"<<endl;
-			// }
 		}
 
-	while(!ourData.parseQ.empty()){
-		 parseData(searchStrings, ourData.parseQ.front().data,"output.txt",ourData.parseQ.front().site);
-		 ourData.parseQ.pop();
-	}
-	delete [] pArray;
+*///ctrl c handler	delete [] pArray;
 	return 0;
 }
 
 void timer_reset(int s){
-	longjmp(env, 0);
+	alarm(PERIOD_FETCH);
+	cout<<"timer triggered"<<endl;
+	//get site html content
+	fstream siteFile(SITE_FILE);
+	while(siteFile>>line){
+		ourData.fetchQ.push(line);
+		cout<<"pushing to fetchQ"<<endl;
+		pthread_cond_broadcast(&fCond);
+	}
+	cin.ignore();
+	while(!ourData.parseQ.empty()){
+		 parseData(searchStrings, ourData.parseQ.front().data,"output.txt",ourData.parseQ.front().site);
+		 ourData.parseQ.pop();
+	}
+//	longjmp(env, 0);
 }
 
 
 void *threadFetch(void *fData) {
-	fetch_args * pData = (fetch_args *) fData;
-//	while(1) { // or while(gKeepRunning)
+	fetch_args * pData = &ourData;
+	while(fKeepRunning) { // or while(gKeepRunning)
 		// lock Mutex
 		pthread_mutex_lock(&fMutex);
 		while (pData->fetchQ.empty()) { 	// bars other threads from using
+			cout<<"waiting"<<endl;
 			pthread_cond_wait(&fCond, &fMutex);
 		}
 		// pop the first item from queue
@@ -144,12 +149,11 @@ void *threadFetch(void *fData) {
 
 		// put data/work item in parse queue
 		pData->parseQ.push(temp);
-		pData->fetchQ.push(current_URL);
-
+		cout<<"pushing to parseQ"<<endl;
 		// signal or broadcast (bcast preferred way)
 		// unlock parse queue
 		pthread_mutex_unlock(&pMutex);
 		pthread_cond_broadcast(&pCond);
-//	}
+	}
 	return NULL;
 }
