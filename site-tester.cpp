@@ -42,7 +42,6 @@ int main(int argc, char* argv[]){
 	signal(SIGALRM, timer_reset);
 	fetch_args ourData;
 
-
 	string line;
 	string delim = "=";
 	if (argc <2){
@@ -95,11 +94,18 @@ int main(int argc, char* argv[]){
 		}
 		for(int i=0; i<NUM_FETCH; i++){
 			cout<<"joining"<<endl;
-			int rc = pthread_join(pArray[i], NULL);
-			if(rc!=0){
-				cout<<"it done fucked up"<<endl;
+			if (pthread_join(pArray[i], NULL)) {
+				perror("Error joining thread");	// catch join error
+			} else {
+				cout << "joined" << endl;
 			}
+
+			// int rc = pthread_join(pArray[i], NULL);
+			// if(rc!=0){
+			// 	cout<<"it done fucked up"<<endl;
+			// }
 		}
+
 	while(!ourData.parseQ.empty()){
 		 parseData(searchStrings, ourData.parseQ.front().data,"output.txt",ourData.parseQ.front().site);
 		 ourData.parseQ.pop();
@@ -125,6 +131,7 @@ void *threadFetch(void *fData) {
 		string current_URL = pData->fetchQ.front();
 		pData->fetchQ.pop();
 		// unlock fqueue mutex
+//		pthread_cond_broadcast(&fCond);
 		pthread_mutex_unlock(&fMutex);
 
 		// CURL
@@ -137,12 +144,12 @@ void *threadFetch(void *fData) {
 
 		// put data/work item in parse queue
 		pData->parseQ.push(temp);
+		pData->fetchQ.push(current_URL);
 
 		// signal or broadcast (bcast preferred way)
-		pthread_cond_broadcast(&pCond);
 		// unlock parse queue
 		pthread_mutex_unlock(&pMutex);
+		pthread_cond_broadcast(&pCond);
 //	}
 	return NULL;
 }
-
