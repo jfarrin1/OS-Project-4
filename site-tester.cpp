@@ -69,10 +69,22 @@ int main(int argc, char* argv[]){
 		}
 		string val = line;
 		if(split.compare("PERIOD_FETCH")==0){
+			if (stoi(val) <0){
+				cout<<"error: PERIOD_FETCH must be >=0"<<endl;
+				return 1;
+			}
 			PERIOD_FETCH = stoi(val);
 		} else if(split.compare("NUM_FETCH")==0){
+			if (stoi(val) >8 || stoi(val) <1){
+				cout<<"error: invalid NUM_FETCH"<<endl;
+				return 1;
+			}
 			NUM_FETCH = stoi(val);
 		} else if(split.compare("NUM_PARSE")==0){
+			if (stoi(val) >8 || stoi(val) <1){
+				cout<<"error: invalid NUM_PARSE"<<endl;
+				return 1;
+			}
 			NUM_PARSE = stoi(val);
 		} else if(split.compare("SEARCH_FILE")==0){
 			SEARCH_FILE = val;
@@ -84,12 +96,19 @@ int main(int argc, char* argv[]){
 	}
 	//Get Search strings=======================
 	fstream searchFile(SEARCH_FILE);
+	if(!searchFile.is_open()){
+		cout<<"error: could not open "<<SEARCH_FILE<<endl;
+		return 1;
+	}
 	while(getline(searchFile, line)){
 		searchStrings.push_back(line);
 	}
-//	int val = setjmp(env);
 	//get site html content
 	fstream siteFile(SITE_FILE);
+	if(!siteFile.is_open()){
+		cout<<"error: could not open "<<SITE_FILE<<endl;
+		return 1;
+	}
 	for(int i=0; i<NUM_FETCH; i++){
 		cout<<"creating fetch thread"<<endl;
 		pthread_create(&fArray[i], NULL, threadFetch, (void*) &ourData);
@@ -100,17 +119,6 @@ int main(int argc, char* argv[]){
 	}
 	timer_reset(0);
 	while(fKeepRunning);
-		//start threading
-/*		for(int i=0; i<NUM_FETCH; i++){
-			cout<<"joining"<<endl;
-			if (pthread_join(pArray[i], NULL)) {
-				perror("Error joining thread");	// catch join error
-			} else {
-				cout << "joined" << endl;
-			}
-		}
-
-*///ctrl c handler	delete [] pArray;
 	return 0;
 }
 
@@ -202,16 +210,16 @@ void *threadFetch(void *fData) {
 			site = current_URL;
 			temp.site = site;
 			temp.data = siteHTML;
-			// lock parse queue
 		}
+		// lock parse queue
 		pthread_mutex_lock(&pMutex);
 		if (fKeepRunning){
 			// put data/work item in parse queue
 			pData->parseQ.push(temp);
 			cout<<"pushing to parseQ"<<endl;
-			// signal or broadcast (bcast preferred way)
-			// unlock parse queue
 		}
+		// signal or broadcast (bcast preferred way)
+		// unlock parse queue
 		pthread_mutex_unlock(&pMutex);
 		pthread_cond_broadcast(&pCond);
 	}
