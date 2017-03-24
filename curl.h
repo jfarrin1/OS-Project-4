@@ -49,8 +49,11 @@ string mainCurl(string website)
  
   /* specify URL to get */ 
   curl_easy_setopt(curl_handle, CURLOPT_URL, website.c_str());
+  
+  /* complete within 10 seconds */
+  curl_easy_setopt(curl_handle, CURLOUT_TIMEOUT, 10L);
 
-//follow redirect
+  /* follow redirect */
   curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
  
   /* send all data to this function  */ 
