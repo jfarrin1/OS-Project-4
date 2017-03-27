@@ -11,7 +11,6 @@
 #include <errno.h>
 #include <new>
 #include <signal.h>
-#include <setjmp.h>
 #include <unistd.h>
 using namespace std;
 
@@ -20,9 +19,10 @@ int NUM_FETCH = 1;
 int NUM_PARSE = 1;
 string SEARCH_FILE = "Search.txt";
 string SITE_FILE = "Sites.txt";
-pthread_mutex_t fMutex, pMutex;
-pthread_cond_t pCond, fCond;
-jmp_buf env;
+pthread_mutex_t fMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t pMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t pCond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t fCond = PTHREAD_COND_INITIALIZER;
 int fKeepRunning = 1;
 vector<string> searchStrings;
 
@@ -38,8 +38,10 @@ typedef struct __fetch_args {
 } fetch_args;
 
 fetch_args ourData;
-pthread_t * pArray = new pthread_t[NUM_PARSE];
-pthread_t * fArray = new pthread_t[NUM_FETCH];
+//pthread_t pArray [NUM_PARSE];
+//pthread_t fArray [NUM_FETCH];
+pthread_t *pArray;
+pthread_t *fArray;
 string line;
 
 void * threadFetch(void*);
@@ -91,9 +93,12 @@ int main(int argc, char* argv[]){
 		} else if(split.compare("SITE_FILE")==0){
 			SITE_FILE = val;
 		} else {
+
 			cout<<"Error: Unkown parameter"<<endl;
 		}
 	}
+	pArray = new pthread_t[NUM_PARSE];
+	fArray = new pthread_t[NUM_FETCH];
 	//Get Search strings=======================
 	fstream searchFile(SEARCH_FILE);
 	if(!searchFile.is_open()){
@@ -109,11 +114,13 @@ int main(int argc, char* argv[]){
 		cout<<"error: could not open "<<SITE_FILE<<endl;
 		return 1;
 	}
+	//create fetch Threads
 	for(int i=0; i<NUM_FETCH; i++){
 		cout<<"creating fetch thread"<<endl;
 		pthread_create(&fArray[i], NULL, threadFetch, (void*) &ourData);
 	}
-	for(int i=0; i<NUM_FETCH; i++){
+	//create parse threads
+	for(int i=0; i<NUM_PARSE; i++){
 		cout<<"creating parse thread"<<endl;
 		pthread_create(&pArray[i], NULL, threadParse, (void*) &ourData);
 	}
@@ -128,7 +135,6 @@ void interrupt_handler(int s){
 	pthread_cond_broadcast(&fCond);
 	pthread_cond_broadcast(&pCond);
 	for(int i=0; i < NUM_FETCH; i++){
-		cout<<"joining fetch"<<endl;
 		int rc = pthread_join(fArray[i], NULL);
 		if (rc <0) cout<<"error joining"<<endl;
 	}
@@ -149,8 +155,10 @@ void timer_reset(int s){
 	//get site html content
 	fstream siteFile(SITE_FILE);
 	while(siteFile>>line){
+		pthread_mutex_lock(&fMutex);
 		ourData.fetchQ.push(line);
 		cout<<"pushing to fetchQ"<<endl;
+		pthread_mutex_unlock(&fMutex);
 		pthread_cond_broadcast(&fCond);
 	}
 }
